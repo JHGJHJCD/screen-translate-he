@@ -173,7 +173,12 @@ def _classify_api_error(e):
 
 def _parse(text):
     blocks = []
-    for item in json.loads(text or "[]"):
+    data = json.loads(text or "[]")
+    if not isinstance(data, list):              # למשל {"error": ...}: תשובה פגומה, לא תקלת רשת
+        raise ValueError("unexpected response shape")
+    for item in data:
+        if not isinstance(item, dict):
+            continue
         box = item.get("box_2d") or []
         he = (item.get("he") or "").strip()
         src = (item.get("text") or "").strip()

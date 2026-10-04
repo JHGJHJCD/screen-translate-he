@@ -73,6 +73,7 @@ if not FROZEN:
 PRIVACY_MARK = HERE / "privacy_seen"
 # המיקום והגודל האחרונים של הריבוע ("x,y,רוחב,גובה"), באותו מקום ובאותה שיטה; ההסרה מוחקת גם אותו
 PLACE_FILE = HERE / "window_place"
+ERROR_LOG_MAX = 200_000   # בייטים; כש-error.log עובר את זה נשאר רק החצי האחרון
 
 # --- מראה ---
 RED = "#E51400"        # האדום של Windows 8

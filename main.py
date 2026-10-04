@@ -386,7 +386,7 @@ class TranslatorWindow(QWidget):
             return
         box = QMessageBox(QMessageBox.Icon.NoIcon, f"עדכון {WINDOW_TITLE}", f"יש גרסה חדשה: {version}")
         if config.FROZEN:
-            box.setInformativeText(f"הגרסה שלך: {updater.current_version()}.\n\n"
+            box.setInformativeText(f"הגרסה שלך: {updater.current_version()}\n\n"
                                    "להתקין אותה עכשיו? התוכנה תיסגר לרגע ותיפתח מחדש.")
             yes = box.addButton("התקן", QMessageBox.ButtonRole.AcceptRole)
             box.addButton("לא עכשיו", QMessageBox.ButtonRole.RejectRole)
@@ -819,7 +819,14 @@ class TranslatorWindow(QWidget):
 
 
 def _log_crash(kind, value, tb):
-    with open(config.HERE / "error.log", "a", encoding="utf-8") as f:
+    path = config.HERE / "error.log"
+    try:                                                # שלא יגדל בלי גבול: משאירים רק את הסוף
+        if path.stat().st_size > config.ERROR_LOG_MAX:
+            tail = path.read_bytes()[-config.ERROR_LOG_MAX // 2:]
+            path.write_bytes(tail[tail.find(b"\n") + 1:])
+    except OSError:
+        pass
+    with open(path, "a", encoding="utf-8") as f:
         f.write(time.strftime("%Y-%m-%d %H:%M:%S\n"))
         traceback.print_exception(kind, value, tb, file=f)
 
