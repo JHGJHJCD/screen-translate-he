@@ -1,0 +1,7 @@
+# בדיקות, בנייה, ומנוע Gemini (לא חובה להרצה רגילה).
+-r requirements.txt
+google-genai==2.22.0      # רק ל-config.ENGINE = "gemini"
+PyQt6-WebEngine==6.11.0   # דף הבדיקה (tests/harness.py)
+pillow==12.2.0            # tests/, build_share.py
+psutil==7.2.2             # tests/run_ui.py
+pyinstaller==6.19.0       # build_share.py, tests/audit.py

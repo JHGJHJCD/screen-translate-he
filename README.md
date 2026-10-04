@@ -29,6 +29,8 @@
 Python 3.12 ו-PyQt6. `python main.py` מריץ, `python build_share.py` בונה את קובץ ההתקנה (PyInstaller + Inno Setup 6),
 `python tests/test_units.py` מריץ את בדיקות היחידה.
 
+הפרטים המלאים (התקנת הספריות, מבנה הקוד, בדיקות) ב-[CONTRIBUTING.md](CONTRIBUTING.md), והמשימות הפתוחות ב-[Issues](https://github.com/JHGJHJCD/screen-translate-he/issues).
+
 ## רישיון
 
 GPL גרסה 3 (ראו `LICENSE`), כי התוכנה בנויה על PyQt6.

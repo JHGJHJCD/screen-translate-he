@@ -7,3 +7,6 @@
 !/tests/
 /tests/*
 !/tests/*.py
+!/CONTRIBUTING.md
+!/requirements.txt
+!/requirements-dev.txt

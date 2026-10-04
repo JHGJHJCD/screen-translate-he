@@ -1,0 +1,11 @@
+# מה שצריך כדי להריץ את התוכנה (python main.py). Python 3.12, Windows 10/11 64 ביט.
+PyQt6==6.11.0
+numpy==2.5.1
+truststore==0.10.4
+winrt-runtime==3.2.1
+winrt-Windows.Foundation==3.2.1
+winrt-Windows.Foundation.Collections==3.2.1
+winrt-Windows.Globalization==3.2.1
+winrt-Windows.Graphics.Imaging==3.2.1
+winrt-Windows.Media.Ocr==3.2.1
+winrt-Windows.Storage.Streams==3.2.1
