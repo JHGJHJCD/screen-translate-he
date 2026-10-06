@@ -10,3 +10,10 @@
 !/CONTRIBUTING.md
 !/requirements.txt
 !/requirements-dev.txt
+!/extension/
+!/tests/ext/
+/tests/ext/node_modules/
+/tests/ext/profile/
+/tests/ext/ext-test/
+/tests/ext/shot-*.png
+/tests/ext/package-lock.json

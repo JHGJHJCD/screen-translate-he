@@ -78,6 +78,17 @@ python tests/run_ui.py <תיקיית פלט> <extra|buttons|soak>
 
 `tests/audit.py` בודק את החבילה אחרי בנייה: שלא נכנס אליה נתיב אישי, שהרישיונות וקוד המקור מצורפים, ומה נארז.
 
+## תוסף כרום/אדג'
+
+התיקייה `extension/` (גרסה בקובץ `manifest.json`, MV3, כרום 138+ ואדג' 148+) היא גרסה של אותו רעיון בתוך הדפדפן: ריבוע שמתרגם את מה שמתחתיו, ותרגום של כל הדף.
+
+- **טעינה:** `chrome://extensions` ← מצב מפתח ← "טען פריט שנפרק" ← התיקייה `extension`. אחרי שינוי בקוד: כפתור הרענון בכרטיס התוסף.
+- **קבצים:** `background.js` (הפעלה, צילום, גיבוי Gemini/Google), `content.js` (הריבוע, תרגום הדף, ציור), `offscreen.*` (זיהוי טקסט עם Tesseract, האנגלית ארוזה ב-`vendor/tesseract`), `options.*` (הגדרות והורדת המודל).
+- **תרגום:** המתרגם המובנה של הדפדפן (`Translator`), מקומי ובלי מפתח. צריך להוריד מודל פעם אחת בלחיצה של המשתמש. גיבוי (Gemini אם הוזן מפתח, אחרת Google) רק כשהמובנה לא זמין.
+- **בדיקות:** `tests/ext/` (ראו `README.md` שם). כרום מגרסה 154 מתעלם מ-`--load-extension`, ולכן הבדיקות טוענות את התוסף דרך puppeteer-core.
+- **מלכודות:** חובה `content_security_policy` מפורש עם `wasm-unsafe-eval` (אחרת Tesseract נתקע בשקט); קיצור `Ctrl+Alt+אות` פסול בתוסף (נבחר `Alt+Shift+T`); `captureVisibleTab` דורש `activeTab`.
+- **מפתח Gemini:** כל משתמש מזין משלו בהגדרות התוסף (`chrome.storage.local`). לא להכניס מפתח לקוד.
+
 ## בנייה ופרסום
 
 `python build_share.py` דורש את Inno Setup 6. מספר הגרסה ושם המפיץ מגיעים מ-`config.VERSION` ו-`config.PUBLISHER`.

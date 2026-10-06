@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>הגדרות — תרגום מסך</title>
+<style>
+  :root { --bg:#f6f5f1; --card:#fff; --ink:#1d1d1b; --muted:#6b6a64; --line:#e3e1d8; --accent:#c0392b; --ok:#107C10; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 "Segoe UI", Arial, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 18px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin: 0 0 14px; }
+  h2 { font-size: 17px; margin: 0 0 8px; }
+  label { display: block; margin: 10px 0 4px; font-weight: 600; }
+  .hint { color: var(--muted); font-size: 14px; margin: 2px 0 0; font-weight: 400; }
+  select, input, textarea { width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
+  button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--accent); background: var(--accent); color: #fff; padding: 9px 16px; font-weight: 700; }
+  button:disabled { opacity: .6; cursor: default; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  #state { font-weight: 700; } .ok { color: var(--ok); } .bad { color: var(--accent); }
+  .bar { height: 8px; background: var(--line); border-radius: 6px; overflow: hidden; margin-top: 8px; display: none; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--ok); }
+  #saved { color: var(--ok); font-weight: 700; margin-inline-start: 8px; opacity: 0; transition: opacity .3s; }
+  #out { margin-top: 8px; min-height: 24px; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>תרגום מסך — הגדרות</h1>
+  <p class="sub">השינויים נשמרים אוטומטית. <span id="saved">נשמר</span></p>
+
+  <section>
+    <h2>מנוע התרגום בתוך הדפדפן</h2>
+    <p class="hint">התרגום נעשה בתוך הדפדפן, חינם, בלי מפתח ובלי לשלוח את הטקסט החוצה. בפעם הראשונה צריך להוריד מודל לשפה (כמה דקות).</p>
+    <div class="row"><span id="state">בודק…</span></div>
+    <div class="bar" id="bar"><i id="fill"></i></div>
+    <div class="row"><button id="download">הורד מודל</button></div>
+    <label for="testin">בדיקה</label>
+    <input id="testin" dir="ltr" value="Hello, how are you today?">
+    <div class="row"><button id="test">תרגם</button></div>
+    <div id="out"></div>
+  </section>
+
+  <section>
+    <h2>שפות</h2>
+    <label for="source">שפת המקור</label>
+    <select id="source">
+      <option value="auto">זיהוי אוטומטי</option>
+      <option value="en">אנגלית</option><option value="ru">רוסית</option><option value="fr">צרפתית</option>
+      <option value="es">ספרדית</option><option value="de">גרמנית</option><option value="ar">ערבית</option>
+      <option value="it">איטלקית</option><option value="pt">פורטוגזית</option><option value="uk">אוקראינית</option>
+    </select>
+    <label for="target">שפת היעד</label>
+    <select id="target">
+      <option value="he">עברית</option><option value="en">אנגלית</option><option value="ru">רוסית</option>
+      <option value="fr">צרפתית</option><option value="es">ספרדית</option><option value="ar">ערבית</option>
+    </select>
+    <label for="ocrLangs">שפה לזיהוי טקסט בתוך תמונות (בריבוע)</label>
+    <select id="ocrLangs">
+      <option value="eng">אנגלית (ארוזה בתוך התוסף)</option>
+      <option value="rus">רוסית (יורדת בפעם הראשונה)</option>
+      <option value="fra">צרפתית (יורדת בפעם הראשונה)</option>
+      <option value="spa">ספרדית (יורדת בפעם הראשונה)</option>
+      <option value="deu">גרמנית (יורדת בפעם הראשונה)</option>
+      <option value="ara">ערבית (יורדת בפעם הראשונה)</option>
+    </select>
+  </section>
+
+  <section>
+    <h2>גיבוי כשהמנוע המובנה לא זמין</h2>
+    <label for="fallback">מתי לשלוח טקסט ל-Google (או ל-Gemini)</label>
+    <select id="fallback">
+      <option value="safe">כשצריך — אבל לא בדפים עם שדה סיסמה ולא באתרי בנקים</option>
+      <option value="off">אף פעם — רק המנוע המובנה</option>
+      <option value="always">תמיד כשצריך, בכל אתר</option>
+    </select>
+    <label for="geminiKey">מפתח Gemini (אופציונלי)</label>
+    <input id="geminiKey" type="password" autocomplete="off" placeholder="אפשר להשאיר ריק">
+    <p class="hint">אם הוזן מפתח, הוא ישמש כגיבוי לפני Google. המפתח נשמר רק בדפדפן הזה.</p>
+  </section>
+</main>
+<script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+{ "name": "screen-translate-ext-tests", "private": true, "dependencies": { "puppeteer-core": "^25.12.0" } }

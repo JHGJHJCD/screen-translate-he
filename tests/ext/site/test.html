@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Test page</title>
+<style>body{font:18px Arial;margin:0;padding:0;background:#fff;color:#222}
+#hero{position:absolute;left:84px;top:130px;width:420px;background:#fff7e0;padding:10px;border-radius:6px}
+#hero h1{font-size:28px;margin:0 0 8px;color:#0a3d91}
+#rest{position:absolute;left:600px;top:20px;width:520px}
+code{background:#eee}
+</style></head><body>
+<div id="hero"><h1>Welcome to our store</h1>
+<p>Free shipping on every order over fifty dollars. Click the button below to see today's special offers.</p></div>
+<div id="rest"><h2>Settings</h2>
+<p>Your account has been updated successfully. Please check your email for the confirmation message.</p>
+<ul><li>First item in the list</li><li>Second item in the list</li></ul>
+<p>Use <code>npm install</code> to install it. Brand: YouTube and iPhone.</p>
+<button id="b">Add to cart</button>
+<p id="mutate">Hebrew text: שלום עולם, זה כבר בעברית.</p>
+<div id="late"></div></div>
+<script>setTimeout(()=>{document.getElementById('late').innerHTML='<p>This paragraph was added after the page loaded.</p>'},1500)</script>
+</body></html>
