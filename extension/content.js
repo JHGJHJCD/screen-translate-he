@@ -290,7 +290,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events
 .bar button:hover { background: rgba(255,255,255,.34); }
 .bar button[hidden] { display: none; }
 .bar button.dl { background: #fff; color: #222; font-weight: 700; }
-.box.fp { height: 0 !important; border-width: 0; }
+.box.fp { left: 0 !important; top: ${BAR_H + BORDER}px !important; width: 100% !important; height: calc(100% - ${BAR_H + BORDER}px) !important; }
 .box.fp canvas, .box.fp .e, .box.fp .h { display: none; }
 .e { position: absolute; pointer-events: auto; cursor: move; }
 .e.n { top: -${BORDER + 4}px; left: 0; right: 0; height: 12px; } .e.s { bottom: -${BORDER + 4}px; left: 0; right: 0; height: 12px; }
@@ -484,6 +484,25 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events
       for (const p of px) if (p[0] > maxd * 0.88) { n++; r += p[1]; gg += p[2]; b += p[3]; }
       return [Math.round(r / n), Math.round(gg / n), Math.round(b / n)];
     }
+    // שיעור הפיקסלים ה"דיו" בתוך שורות הטקסט; אותיות מודגשות עבות יותר ולכן צפופות יותר
+    const BOLD_INK = 0.26; // נמדד: כותרת מודגשת 0.35, פסקה רגילה 0.18
+    function inkDensity(img, lines, bg, fg) {
+      const { width: W, height: H, data } = img;
+      const span = Math.abs(fg[0] - bg[0]) + Math.abs(fg[1] - bg[1]) + Math.abs(fg[2] - bg[2]);
+      if (span < 90) return 0;
+      let ink = 0, all = 0;
+      for (const l of lines) {
+        for (let y = Math.max(0, Math.floor(l.y0)); y < Math.min(H, Math.ceil(l.y1)); y++) {
+          for (let x = Math.max(0, Math.floor(l.x0)); x < Math.min(W, Math.ceil(l.x1)); x++) {
+            const i = (y * W + x) * 4;
+            const d = Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]);
+            all++; if (d > span * 0.5) ink++;
+          }
+        }
+      }
+      const r = all ? ink / all : 0;
+      return r;
+    }
     const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[s.length >> 1] || 12; };
 
     // טסראקט לפעמים מאחד כותרת וגוף טקסט: מפצלים לפי שינוי בגובה השורה או פער אנכי גדול
@@ -524,9 +543,17 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events
         const fg = sampleFg(img, x0, y0, x1, y1, bg);
         ctx.fillStyle = `rgb(${bg})`; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
         const W = x1 - x0 - 2, H = y1 - y0;
-        let fs = Math.max(9, median(p.lines.map(l => l.y1 - l.y0)) * 0.9);
+        // גודל האות: בשורה בודדת גובה התיבה תלוי באותיות עם זנב/גג, ובפסקה בולטת המרחק בין השורות
+        const hs = p.lines.map(l => l.y1 - l.y0);
+        let fs;
+        if (p.lines.length >= 2) {
+          const pitch = median(p.lines.slice(1).map((l, k) => l.y0 - p.lines[k].y0).filter(d => d > 0));
+          fs = Math.max(9, Math.min(pitch / 1.25, Math.max(...hs) * 1.1));
+        } else fs = Math.max(9, hs[0] / 0.85);
+        const bold = inkDensity(img, p.lines, bg, fg) > BOLD_INK;
+        const wt = bold ? '700 ' : '';
         const wrap = (size) => {
-          ctx.font = `${size}px "Segoe UI", Arial, sans-serif`;
+          ctx.font = `${wt}${size}px "Segoe UI", Arial, sans-serif`;
           const words = tr.split(/\s+/); const out = []; let cur = '';
           for (const w of words) {
             const t = cur ? cur + ' ' + w : w;
@@ -537,13 +564,16 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events
         };
         let lines = wrap(fs);
         while (lines.length * fs * 1.2 > H * 1.15 && fs > 7) { fs *= 0.92; lines = wrap(fs); }
+        // יישור לפי המקור: שורות ממורכזות נשארות ממורכזות, אחרת לפי כיוון השפה
+        // (שורה בודדת תמיד "ממורכזת" ביחס לעצמה, ולכן שם אי אפשר לדעת)
+        const centered = p.lines.length > 1 && p.lines.every(l => Math.abs((l.x0 + l.x1) / 2 - (x0 + x1) / 2) < (x1 - x0) * 0.03) && p.lines.some(l => Math.abs(l.x0 - p.lines[0].x0) > 4);
         ctx.fillStyle = `rgb(${fg})`;
         ctx.textBaseline = 'top';
         ctx.direction = rtl ? 'rtl' : 'ltr';
-        ctx.textAlign = rtl ? 'right' : 'left';
+        ctx.textAlign = centered ? 'center' : (rtl ? 'right' : 'left');
         const total = lines.length * fs * 1.2;
         let y = y0 + Math.max(0, (H - total) / 2);
-        const x = rtl ? x1 - 1 : x0 + 1;
+        const x = centered ? (x0 + x1) / 2 : (rtl ? x1 - 1 : x0 + 1);
         for (const ln of lines) { ctx.fillText(ln, x, y); y += fs * 1.2; }
       });
     }
@@ -561,7 +591,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events
     el.full.onclick = async () => {
       u.fullPage = !u.fullPage;
       el.full.textContent = u.fullPage ? 'חזרה לריבוע' : 'מסך מלא';
-      el.box.classList.toggle('fp', u.fullPage); // בתרגום כל הדף נשאר רק הפס, כדי שהריבוע לא יסתיר את הדף
+      el.box.classList.toggle('fp', u.fullPage); // בתרגום כל הדף המסגרת מקיפה את כל הדף
       u.runId++;
       clearTimeout(u.timers.run);
       if (u.fullPage) {
