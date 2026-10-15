@@ -177,7 +177,7 @@ def _paint_rows(painter, block, cover):
     option = QTextOption()
     option.setTextDirection(Qt.LayoutDirection.RightToLeft)
     option.setWrapMode(QTextOption.WrapMode.NoWrap)
-    # העברית מתחילה בקצה השמאלי של המקור, בדיוק איפה שהאנגלית התחילה (בחירת יהודה, 15/10/2026),
+    # העברית מתחילה בקצה השמאלי של המקור, בדיוק איפה שהאנגלית התחילה,
     # כך ששורות שהיו מיושרות זו מתחת לזו נשארות מיושרות.
     # (AlignAbsolute: בלי זה Qt הופך "שמאל" ל"ימין" בטקסט מימין לשמאל)
     option.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignAbsolute | Qt.AlignmentFlag.AlignTop)

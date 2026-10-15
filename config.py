@@ -7,7 +7,7 @@ FROZEN = getattr(sys, "frozen", False)   # גרסת השיתוף (exe עצמאי
 HERE = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
 
 # --- מה שכתוב על הקבצים של גרסת השיתוף (build_share.py קורא מכאן) ---
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 PUBLISHER = "תרגום מסך"
 
 # --- עדכונים ---
