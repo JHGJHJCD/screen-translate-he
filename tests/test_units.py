@@ -223,6 +223,17 @@ class GroupingCase(unittest.TestCase):
                      "Don't change it, it's fine", "OK Cancel Apply", "Kevin O'Connor", "Why try"]:
             self.assertTrue(translate_engine.looks_english(text), text)
 
+    def test_english_window_over_hebrew_is_cut_out(self):
+        # חלון אנגלי קטן מעל טקסט עברי: Windows קורא את כל השורה יחד
+        words = [word(w, 50 * i, 0) for i, w in enumerate(
+            "nnnvn D'oopo Start a side chat Reply IIUDVI nilVDl".split())]
+        runs = translate_engine._english_runs(words)
+        self.assertEqual([" ".join(w[0] for w in r) for r in runs], ["Start a side chat Reply"])
+
+    def test_plain_english_line_is_not_cut(self):
+        words = [word(w, 50 * i, 0) for i, w in enumerate("npm install PyQt6 now".split())]
+        self.assertEqual(len(translate_engine._english_runs(words)[0]), 4)
+
     def test_group_skips_zero_height(self):
         self.assertEqual(translate_engine._group([{"text": "x", "x0": 0, "y0": 5, "x1": 9, "y1": 5}]), [])
 

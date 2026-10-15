@@ -90,7 +90,8 @@ class TranslateEngine:
         for line in result.lines:
             words = [(w.text, w.bounding_rect.x, w.bounding_rect.y,
                       w.bounding_rect.width, w.bounding_rect.height) for w in line.words]
-            lines.extend(_split_line(words))
+            for run in _english_runs(words):
+                lines.extend(_split_line(run))
         return lines
 
     def translate(self, image):
@@ -233,12 +234,60 @@ def _english_word(word):
         return None
     if not (word.isupper() or CAMEL.fullmatch(word)):           # "nilVDl", "DblDb"
         return False
+    if word.isupper() and len(word) >= 4 and word.count("I") / len(word) >= 0.34:
+        return False                                             # "IIUDVI": ו/ן/י נקראות I
     lower = word.lower()
     if not re.search(r"[aeiou]", lower):                         # "nnnvn", "nmyn"
         return (word.isupper() and len(word) <= 5) or lower in Y_WORDS
     if lower.startswith("nn") or re.search(r"(.)\1\1", lower):
         return False
     return not (len(lower) > 2 and sum(c in "no" for c in lower) / len(lower) > 0.7)
+
+
+def _hebrew_word(word):
+    """מילה שנראית כמו עברית שהזיהוי האנגלי קרא (ולא מספר או סימן, שאין להם צד)."""
+    if HEBREW_MARKS.search(word):
+        return True
+    for part in LETTERS.findall(word):
+        lower = part.lower()
+        if not re.search(r"[aeiou]", lower) and len(lower) <= 4 and lower.count("n") / len(lower) < 0.5:
+            continue                                # npm, PyQt, ynb — לא מספיק כדי לחתוך
+        if _english_word(part) is False:
+            return True
+    return False
+
+
+def _english_runs(words):
+    """שורה ש-Windows זיהה יכולה לערבב עברית ואנגלית — למשל חלון אנגלי קטן מעל טקסט עברי.
+    חותכים אותה במילים העבריות, כך שהחלק האנגלי מתורגם לבד והעברית שסביבו לא מכוסה."""
+    runs, current, cut = [], [], False
+    for word in words:
+        if _hebrew_word(word[0]):
+            cut = True
+            if current:
+                runs.append(current)
+            current = []
+        else:
+            current.append(word)
+    runs = runs + [current] if current else runs
+    if not cut:
+        return runs
+    # ליד עברית, שארית קצרה ("no", "phi") היא בדרך כלל עוד עברית שנקראה לא נכון — לא מכסים אותה
+    # גם בקצוות של החלק האנגלי נשארות לפעמים מילים עבריות קצרות ("own NY Avraham Fried") — מורידים
+    trimmed = []
+    for run in runs:
+        while run and len("".join(LETTERS.findall(run[0][0]))) < 4:
+            run = run[1:]
+        while run and len("".join(LETTERS.findall(run[-1][0]))) < 4:
+            run = run[:-1]
+        if run and _substantial(run):
+            trimmed.append(run)
+    return trimmed
+
+
+def _substantial(run):
+    good = [w for w in LETTERS.findall(" ".join(word[0] for word in run)) if _english_word(w)]
+    return len(good) >= 2 or any(len(w) >= 5 for w in good)
 
 
 def looks_english(text):
