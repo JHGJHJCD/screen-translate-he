@@ -213,6 +213,16 @@ class GroupingCase(unittest.TestCase):
         self.assertEqual(len(groups), 1)
         self.assertEqual(len(groups[0]["rows"]), 2)
 
+    def test_hebrew_on_screen_is_not_translated(self):
+        # כך הזיהוי האנגלי של Windows קורא עברית שכבר נמצאת על המסך
+        for garbage in ["nnnvn D'oopo nilVDl noun nyp Nin", "1.2.0 no-n ,rv-ny'7 n\"nmn non",
+                        "bT10D-nnnn nobnn", "nnry nnxn ny-w", "O\"IJ'W"]:
+            self.assertFalse(translate_engine.looks_english(garbage), garbage)
+        for text in ["Open the settings menu and choose a language", "Download now", "GitHub Desktop",
+                     "PyQt6 QtWidgets documentation", "No internet connection. Try again later.",
+                     "Don't change it, it's fine", "OK Cancel Apply", "Kevin O'Connor", "Why try"]:
+            self.assertTrue(translate_engine.looks_english(text), text)
+
     def test_group_skips_zero_height(self):
         self.assertEqual(translate_engine._group([{"text": "x", "x0": 0, "y0": 5, "x1": 9, "y1": 5}]), [])
 

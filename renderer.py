@@ -177,13 +177,14 @@ def _paint_rows(painter, block, cover):
     option = QTextOption()
     option.setTextDirection(Qt.LayoutDirection.RightToLeft)
     option.setWrapMode(QTextOption.WrapMode.NoWrap)
-    # שורה אחת (כפתור, כותרת) — באמצע, כמו המקור; פסקה — מיושרת לימין כמו טקסט עברי
-    # (AlignAbsolute: בלי זה Qt הופך "ימין" ל"שמאל" בטקסט מימין לשמאל)
-    side = Qt.AlignmentFlag.AlignHCenter if len(block.rows) == 1 else         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignAbsolute
-    option.setAlignment(side | Qt.AlignmentFlag.AlignTop)
+    # העברית מתחילה בקצה השמאלי של המקור, בדיוק איפה שהאנגלית התחילה (בחירת יהודה, 15/10/2026),
+    # כך ששורות שהיו מיושרות זו מתחת לזו נשארות מיושרות.
+    # (AlignAbsolute: בלי זה Qt הופך "שמאל" ל"ימין" בטקסט מימין לשמאל)
+    option.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignAbsolute | Qt.AlignmentFlag.AlignTop)
+    left = block.rect.left()
     for i, line in enumerate(block.split):
         base = bases[i] if i < len(bases) else bases[-1] + step * (i - len(bases) + 1)
-        box = QRectF(cover.left(), base - metrics.ascent(), cover.width(), metrics.height())
+        box = QRectF(left, base - metrics.ascent(), cover.right() - left, metrics.height())
         painter.drawText(box, line, option)
 
 

@@ -103,7 +103,7 @@ class TranslateEngine:
             Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
         W, H = source.width(), source.height()
 
-        paragraphs = _group(self._recognize(source))
+        paragraphs = _group([l for l in self._recognize(source) if looks_english(l["text"])])
         paragraphs = [p for p in paragraphs if WORD.search(p["text"])]
         if not paragraphs:
             return []
@@ -219,6 +219,41 @@ class TranslateEngine:
             raise EngineError("offline", repr(e)[:200])
         except (ValueError, IndexError, TypeError, StopIteration) as e:
             raise EngineError("other", repr(e)[:200])
+
+
+LETTERS = re.compile(r"[A-Za-z]+")
+CAMEL = re.compile(r"[A-Z]?[a-z]+(?:[A-Z][a-z]+)*")       # Settings, GitHub, PyQt
+Y_WORDS = set("by my fly try why sky gym shy dry cry spy sync rhythm myth lynx ply sly pry style".split())
+# גרשיים בין אותיות ("O\"IJ"), או גרש שאינו קיצור אנגלי (don't, it's, we're, O'Connor)
+HEBREW_MARKS = re.compile(r"[A-Za-z]\"[A-Za-z]|[A-Za-z]'(?!(?:s|t|re|ll|ve|d|m)\b)(?<!\bO')[A-Za-z]")
+
+
+def _english_word(word):
+    if len(word) == 1:
+        return None
+    if not (word.isupper() or CAMEL.fullmatch(word)):           # "nilVDl", "DblDb"
+        return False
+    lower = word.lower()
+    if not re.search(r"[aeiou]", lower):                         # "nnnvn", "nmyn"
+        return (word.isupper() and len(word) <= 5) or lower in Y_WORDS
+    if lower.startswith("nn") or re.search(r"(.)\1\1", lower):
+        return False
+    return not (len(lower) > 2 and sum(c in "no" for c in lower) / len(lower) > 0.7)
+
+
+def looks_english(text):
+    """הזיהוי של Windows מכיר רק אנגלית, ועברית שעל המסך יוצאת ממנו ג'יבריש באותיות לטיניות
+    ("nnnvn D'oopo nilVDl"). את זה לא מתרגמים — אחרת התרגום מצויר מעל העברית ומעוות אותה.
+    הסימנים: הרבה n (ה/ח/ת/ת נקראות n), מילים בלי תנועות, אותיות גדולות באמצע מילה, גרשיים."""
+    if HEBREW_MARKS.search(text):
+        return False
+    words = LETTERS.findall(text)
+    verdict = [v for v in map(_english_word, words) if v is not None]
+    if not verdict:
+        return False
+    letters = "".join(words)
+    many_n = sum(c in "nN" for c in letters) / len(letters) >= 0.3 and len(letters) >= 4
+    return sum(verdict) / len(verdict) >= 0.6 and not many_n
 
 
 def _split_line(words):
