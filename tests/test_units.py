@@ -195,6 +195,24 @@ class GroupingCase(unittest.TestCase):
                  {"text": "body", "x0": 10, "y0": 46, "x1": 280, "y1": 62}]
         self.assertEqual(len(translate_engine._group(lines)), 2)
 
+    def test_baseline_ignores_descenders(self):
+        # "Hello" יושב על הקו (תחתית 70); "typing" יורד מתחתיו — קו הבסיס הוא 70, לא 77
+        r = translate_engine._baseline([("Hello", 0, 46, 60, 24), ("typing", 70, 47, 70, 30),
+                                        ("now", 150, 54, 40, 16)], 46, 77)
+        self.assertEqual(r["base"], 70)
+        self.assertIn(r["top"], (46, 47))
+
+    def test_baseline_only_small_letters(self):
+        r = translate_engine._baseline([("over", 0, 54, 50, 16), ("a", 60, 54, 10, 16)], 54, 70)
+        self.assertEqual(r["base"], 70)
+        self.assertLess(r["top"], 54)              # אות גדולה הייתה מגיעה גבוה יותר מ-x
+
+    def test_group_keeps_each_row(self):
+        lines = translate_engine._split_line([word("first", 10, 0), word("line", 60, 0)]) +             translate_engine._split_line([word("second", 10, 26), word("line", 80, 26)])
+        groups = translate_engine._group(lines)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(len(groups[0]["rows"]), 2)
+
     def test_group_skips_zero_height(self):
         self.assertEqual(translate_engine._group([{"text": "x", "x0": 0, "y0": 5, "x1": 9, "y1": 5}]), [])
 
@@ -403,6 +421,18 @@ class RendererCase(unittest.TestCase):
                                      QColor("white"), QColor("black"))
         font = renderer._fit_font(block, renderer.cover_of(block.rect))
         self.assertEqual(font.pixelSize(), config.MIN_FONT_PX)
+
+
+    def test_rows_put_each_line_on_its_baseline(self):
+        from PyQt6.QtGui import QPainter
+        block = renderer.StyledBlock(QRectF(10, 10, 300, 50), "שורה ראשונה של הטקסט ועוד שורה שנייה כאן", 2,
+                                     QColor("white"), QColor("black"), rows=((12, 28), (40, 56)))
+        image = QImage(400, 100, QImage.Format.Format_RGB32)
+        painter = QPainter(image)
+        renderer.paint_blocks(painter, [block])
+        painter.end()
+        self.assertLessEqual(len(block.split), 2)
+        self.assertGreaterEqual(block.font.pixelSize(), config.MIN_FONT_PX)
 
 
 # ---------- מצב החלון (בלי להציג אותו) ----------

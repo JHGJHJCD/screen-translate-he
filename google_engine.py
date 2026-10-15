@@ -48,6 +48,8 @@ class Block:
     text: str
     he: str
     lines: int
+    # לכל שורה של המקור: (x0, ראש האותיות הגבוהות, x1, קו הבסיס), כשברים. ריק = לא ידוע (Gemini)
+    rows: tuple = ()
 
 
 class EngineError(Exception):

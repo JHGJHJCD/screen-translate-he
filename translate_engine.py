@@ -28,6 +28,8 @@ TEXT_CACHE = 600
 BLOCK_SPLITS = 10         # כמה פעמים מותר לחצות קבוצה שנטפרי חסם, עד שמוותרים על המסך כולו
 BLOCK_RETRY_S = 600       # כמה זמן לא שולחים שוב פסקה שנחסמה
 HEBREW = re.compile(r"[֐-׿]")
+DESCENDER = re.compile(r"[gjpqyQ,;()\[\]{}|@$_/]")   # מילה עם אות שיורדת מתחת לקו הבסיס
+TALL = re.compile(r"[A-Z0-9bdfhkltij'\"!?#%&]")       # מילה עם אות גבוהה (לא רק בגובה x)
 WORD = re.compile(r"[A-Za-z]{2,}")
 
 
@@ -112,8 +114,9 @@ class TranslateEngine:
         for p, he in zip(paragraphs, hebrew):
             if not he or he == p["text"] or not HEBREW.search(he):
                 continue
+            rows = tuple((r["x0"] / W, r["top"] / H, r["x1"] / W, r["base"] / H) for r in p["rows"])
             blocks.append(Block(p["x0"] / W, p["y0"] / H, (p["x1"] - p["x0"]) / W,
-                                (p["y1"] - p["y0"]) / H, p["text"], he, p["lines"]))
+                                (p["y1"] - p["y0"]) / H, p["text"], he, p["lines"], rows))
         return blocks
 
     # ---------- תרגום ----------
@@ -236,8 +239,27 @@ def _split_line(words):
         y0 = min(w[2] for w in part)
         x1 = max(w[1] + w[3] for w in part)
         y1 = max(w[2] + w[4] for w in part)
-        lines.append({"text": " ".join(w[0] for w in part), "x0": x0, "y0": y0, "x1": x1, "y1": y1})
+        line = {"text": " ".join(w[0] for w in part), "x0": x0, "y0": y0, "x1": x1, "y1": y1}
+        line.update(_baseline(part, y0, y1))
+        line["rows"] = [dict(line)]
+        lines.append(line)
     return lines
+
+
+def _baseline(words, y0, y1):
+    """איפה בדיוק השורה: קו הבסיס (תחתית האותיות בלי זנבות כמו g,p,y) וראש האותיות הגבוהות.
+    המסגרת של כל מילה ש-Windows מחזיר צמודה לאותיות, לכן אפשר לחשב את זה מהמילים עצמן."""
+    flat = [w[2] + w[4] for w in words if not DESCENDER.search(w[0])]
+    if flat:
+        base = sorted(flat)[len(flat) // 2]
+    else:                                   # בכל המילים יש זנב: הזנב הוא כרבע מגובה השורה
+        base = y1 - 0.22 * (y1 - y0)
+    tall = [w[2] for w in words if TALL.search(w[0])]
+    if tall:
+        top = sorted(tall)[len(tall) // 2]
+    else:                                   # רק אותיות בגובה x (כמו "over a"): אות גדולה גבוהה פי 1.4 בערך
+        top = base - 1.4 * (base - y0)
+    return {"top": top, "base": max(base, top + 1)}
 
 
 def _group(lines):
@@ -257,7 +279,8 @@ def _group(lines):
                 p["x0"], p["x1"] = min(p["x0"], line["x0"]), max(p["x1"], line["x1"])
                 p["y1"] = line["y1"]
                 p["lines"] += 1
+                p["rows"] += line.get("rows", [])
                 break
         else:
-            paragraphs.append(dict(line, lines=1, line_h=height))
+            paragraphs.append(dict(line, lines=1, line_h=height, rows=list(line.get("rows", []))))
     return paragraphs

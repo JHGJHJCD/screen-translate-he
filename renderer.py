@@ -22,6 +22,8 @@ class StyledBlock:
     fg: QColor
     patch: object = None   # QImage לרקע לא אחיד, או None לרקע בצבע אחד
     font: object = None    # הגופן שהותאם לבלוק (מחושב פעם אחת, בציור הראשון)
+    rows: tuple = ()       # לכל שורה של המקור: (ראש האותיות הגבוהות, קו הבסיס) ביחידות מסך
+    split: list = None     # העברית מחולקת לשורות (מחושב יחד עם הגופן)
 
 
 def image_to_array(image):
@@ -94,7 +96,8 @@ def style_blocks(arr, blocks, width, height):
         c = cover_of(rect)
         bg, fg, patch = _sample_colors(
             arr, int(c.left() * sx), int(c.top() * sy), int(c.right() * sx), int(c.bottom() * sy))
-        styled.append(StyledBlock(rect, b.he, b.lines, QColor(*bg), QColor(*fg), patch))
+        rows = tuple((r[1] * height, r[3] * height) for r in getattr(b, "rows", ()))
+        styled.append(StyledBlock(rect, b.he, b.lines, QColor(*bg), QColor(*fg), patch, rows=rows))
     return styled
 
 
@@ -122,6 +125,68 @@ def _fit_font(block, cover):
         px -= 1
 
 
+_HE_HEIGHT = {}
+
+
+def _letter_height(font):
+    """גובה אות עברית רגילה (בלי זנב) ביחס לגודל הגופן — כדי שהעברית תהיה בגובה האותיות הגדולות של המקור."""
+    if font.family() not in _HE_HEIGHT:
+        probe = QFont(font)
+        probe.setPixelSize(100)
+        _HE_HEIGHT[font.family()] = max(QFontMetricsF(probe).tightBoundingRect("םבה").height() / 100, 0.4)
+    return _HE_HEIGHT[font.family()]
+
+
+def _wrap(text, metrics, width):
+    lines, current = [], ""
+    for word in text.split():
+        trial = f"{current} {word}" if current else word
+        if current and metrics.horizontalAdvance(trial) > width:
+            lines.append(current)
+            current = word
+        else:
+            current = trial
+    return lines + [current] if current else lines
+
+
+def _fit_rows(block, cover):
+    """גופן בגובה האותיות של המקור, ושבירה לשורות; מקטינים רק אם העברית לא נכנסת במספר השורות של המקור."""
+    caps = sorted(base - top for top, base in block.rows)[len(block.rows) // 2]
+    font = QFont(config.FONT_FAMILY)
+    # כל האותיות בעברית בגובה של אות גדולה, ולכן באותו גובה בדיוק העברית נראית גדולה מהמקור
+    px = max(caps * 0.88 / _letter_height(font), config.MIN_FONT_PX)
+    while True:
+        font.setPixelSize(max(int(round(px)), 1))
+        metrics = QFontMetricsF(font)
+        lines = _wrap(block.he, metrics, cover.width())
+        fits = len(lines) <= len(block.rows) and             all(metrics.horizontalAdvance(line) <= cover.width() for line in lines)
+        if fits or px <= config.MIN_FONT_PX:
+            return font, lines
+        px -= 1
+
+
+def _paint_rows(painter, block, cover):
+    """כל שורה של העברית יושבת על קו הבסיס של שורה של המקור, באותו גובה."""
+    if block.font is None:
+        block.font, block.split = _fit_rows(block, cover)
+    painter.setFont(block.font)
+    painter.setPen(block.fg)
+    metrics = QFontMetricsF(block.font)
+    bases = [base for _, base in block.rows]
+    step = bases[-1] - bases[-2] if len(bases) > 1 else metrics.lineSpacing()
+    option = QTextOption()
+    option.setTextDirection(Qt.LayoutDirection.RightToLeft)
+    option.setWrapMode(QTextOption.WrapMode.NoWrap)
+    # שורה אחת (כפתור, כותרת) — באמצע, כמו המקור; פסקה — מיושרת לימין כמו טקסט עברי
+    # (AlignAbsolute: בלי זה Qt הופך "ימין" ל"שמאל" בטקסט מימין לשמאל)
+    side = Qt.AlignmentFlag.AlignHCenter if len(block.rows) == 1 else         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignAbsolute
+    option.setAlignment(side | Qt.AlignmentFlag.AlignTop)
+    for i, line in enumerate(block.split):
+        base = bases[i] if i < len(bases) else bases[-1] + step * (i - len(bases) + 1)
+        box = QRectF(cover.left(), base - metrics.ascent(), cover.width(), metrics.height())
+        painter.drawText(box, line, option)
+
+
 def paint_blocks(painter, styled):
     for block in styled:
         cover = cover_of(block.rect)
@@ -129,6 +194,9 @@ def paint_blocks(painter, styled):
             painter.drawImage(cover, block.patch)
         else:
             painter.fillRect(cover, block.bg)
+        if block.rows:
+            _paint_rows(painter, block, cover)
+            continue
         if block.font is None:
             block.font = _fit_font(block, cover)
         painter.setFont(block.font)
