@@ -25,6 +25,8 @@ WEB_FALLBACK_S = 1800     # כמה זמן נשארים בערוץ של האתר 
 NIKUD = re.compile(r"[֑-ׇ]")
 MIN_TEXT_HEIGHT = 30     # אם האותיות קטנות מזה (בפיקסלים) מגדילים את התמונה לפני הזיהוי
 TEXT_CACHE = 600
+BLOCK_SPLITS = 10         # כמה פעמים מותר לחצות קבוצה שנטפרי חסם, עד שמוותרים על המסך כולו
+BLOCK_RETRY_S = 600       # כמה זמן לא שולחים שוב פסקה שנחסמה
 HEBREW = re.compile(r"[֐-׿]")
 WORD = re.compile(r"[A-Za-z]{2,}")
 
@@ -35,6 +37,10 @@ class TranslateEngine:
         self._lock = threading.Lock()
         self._texts = OrderedDict()     # אנגלית -> עברית (בזיכרון בלבד)
         self._web_until = 0.0           # עד מתי משתמשים בערוץ של האתר במקום בערוץ המהיר
+        self._state = threading.Lock()  # שומר על _texts ו-_blocked כשכמה בקשות רצות במקביל
+        self._blocked = {}              # פסקה שנטפרי חסם -> עד מתי לא שולחים אותה שוב
+        self._no_split_until = 0.0      # הכול נחסם (לא פסקה אחת): עד אז לא מנסים לחצות
+        self.block_detail = ""          # מה שנטפרי ענה בחסימה האחרונה (ליומן; בלי הטקסט שנשלח)
         self.last_model = "Windows OCR + Google Translate"
 
     def warmup(self):
@@ -100,6 +106,8 @@ class TranslateEngine:
         if not paragraphs:
             return []
         hebrew = self._translate_texts([p["text"] for p in paragraphs])
+        if not any(hebrew) and any(p["text"] in self._blocked for p in paragraphs):
+            raise EngineError("blocked", self.block_detail)
         blocks = []
         for p, he in zip(paragraphs, hebrew):
             if not he or he == p["text"] or not HEBREW.search(he):
@@ -110,23 +118,55 @@ class TranslateEngine:
 
     # ---------- תרגום ----------
     def _translate_texts(self, texts):
-        missing = [t for t in dict.fromkeys(texts) if t not in self._texts]
+        # בקשה ישנה (שהריבוע כבר ויתר עליה) יכולה לרוץ במקביל לחדשה, לכן הזיכרון המשותף נגיש רק תחת נעילה.
+        # הרשת עצמה מחוץ לנעילה, כדי שבקשה איטית לא תעכב את החדשה.
+        now = time.monotonic()
+        with self._state:
+            self._blocked = {t: until for t, until in self._blocked.items() if until > now}
+            missing = [t for t in dict.fromkeys(texts) if t not in self._texts and t not in self._blocked]
+            splits = BLOCK_SPLITS if now >= self._no_split_until else 0
         if missing:
-            for src, he in zip(missing, self._translate_many(missing)):
-                self._texts[src] = he.strip()
-            while len(self._texts) > TEXT_CACHE:
-                self._texts.popitem(last=False)
-        return [self._texts.get(t, "") for t in texts]
+            translated = self._translate_many(missing, [splits])
+            with self._state:
+                for src, he in zip(missing, translated):
+                    if src not in self._blocked:
+                        self._texts[src] = he.strip()
+                answer = [self._texts.get(t, "") for t in texts]
+                while len(self._texts) > TEXT_CACHE:
+                    self._texts.popitem(last=False)
+            return answer
+        with self._state:
+            return [self._texts.get(t, "") for t in texts]
 
-    def _translate_many(self, texts):
-        if len(texts) == 1:
-            return [self._request(texts[0])]
-        translated = self._request("\n".join(texts)).split("\n")
+    def _translate_many(self, texts, splits=None):
+        """splits = [כמה חציות עוד מותרות] — של הבקשה הזו בלבד, לא משותף לבקשות אחרות."""
+        if splits is None:
+            splits = [BLOCK_SPLITS]
+        try:
+            if len(texts) == 1:
+                return [self._request(texts[0])]
+            translated = self._request("\n".join(texts)).split("\n")
+        except EngineError as e:
+            # נטפרי סורק את הטקסט שנשלח וחוסם את כל הבקשה בגלל פסקה אחת. מאתרים אותה בחצייה,
+            # מדלגים עליה (נשארת באנגלית) ומתרגמים את השאר.
+            if e.kind != "blocked":
+                raise
+            self.block_detail = str(e)[:600]
+            if splits[0] <= 0:
+                self._no_split_until = time.monotonic() + BLOCK_RETRY_S
+                raise
+            if len(texts) == 1:
+                with self._state:
+                    self._blocked[texts[0]] = time.monotonic() + BLOCK_RETRY_S
+                return [""]
+            splits[0] -= 1
+            mid = len(texts) // 2
+            return self._translate_many(texts[:mid], splits) + self._translate_many(texts[mid:], splits)
         if len(translated) == len(texts):
             return translated
         # Google איחד שורות — מחלקים לשניים ומנסים שוב (ולא שולחים עשרות בקשות אחת-אחת, שמביא לחסימה)
         mid = len(texts) // 2
-        return self._translate_many(texts[:mid]) + self._translate_many(texts[mid:])
+        return self._translate_many(texts[:mid], splits) + self._translate_many(texts[mid:], splits)
 
     def _request(self, text):
         # הערוץ המהיר נחסם לפעמים ל-IP ("unusual traffic", 429) בזמן שהערוץ של האתר עצמו ממשיך לעבוד.
@@ -165,7 +205,7 @@ class TranslateEngine:
             data = json.loads(raw)
             return "".join(part[0] for part in data[0] if part[0])
         except urllib.error.HTTPError as e:
-            detail = e.read(300).decode("utf-8", "replace")
+            detail = e.read(600).decode("utf-8", "replace")
             if e.code == 418 or "netfree" in detail.lower():
                 raise EngineError("blocked", detail)
             raise EngineError("rate" if e.code == 429 else "other", f"{e.code} {detail}")

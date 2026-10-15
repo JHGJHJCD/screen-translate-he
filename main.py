@@ -204,7 +204,8 @@ class TranslatorWindow(QWidget):
         self.shown = []                # התרגומים שמוצגים כרגע
         self.result = None             # התרגומים של התוכן האחרון שנשלח
         self.busy = False
-        self.failed = False            # הבקשה האחרונה נכשלה (רשת/חסימה) — מנסים שוב אחרי המרווח
+        self.logged_block = ""
+        self.failed = False            #הבקשה האחרונה נכשלה (רשת/חסימה) — מנסים שוב אחרי המרווח
         self.gen = 0                  # מספר רץ; תשובה ישנה מ-Google נזרקת
         self.pending_arr = None
         self.sig_sent = None
@@ -242,6 +243,9 @@ class TranslatorWindow(QWidget):
     def start(self, hidden=False):
         hwnd = int(self.winId())
         self._make_tray()
+        app = QGuiApplication.instance()
+        for changed in (app.screenRemoved, app.screenAdded, app.primaryScreenChanged):
+            changed.connect(lambda *_: QTimer.singleShot(1000, self._keep_on_screen))
         if not hidden:
             self.show_square()
         if config.FROZEN:               # גרסת הפיתוח לא מתעדכנת לבד
@@ -275,7 +279,21 @@ class TranslatorWindow(QWidget):
             lambda reason: self.flip() if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
         self.tray.show()
 
+    def _keep_on_screen(self):
+        """מסך שנותק או רזולוציה שהשתנתה: אם אי אפשר לתפוס את הפס העליון, מחזירים את הריבוע למרכז."""
+        if os.environ.get("ST_GEOMETRY"):       # מיקום שנכפה לבדיקה
+            return
+        g = self.geometry()
+        if parse_place(f"{g.x()},{g.y()},{g.width()},{g.height()}",
+                       [s.availableGeometry() for s in QGuiApplication.screens()]):
+            return
+        screen = QGuiApplication.primaryScreen().availableGeometry()
+        w, h = min(g.width(), screen.width()), min(g.height(), screen.height())
+        self._debug("off screen -> center")
+        self.setGeometry(screen.center().x() - w // 2, screen.center().y() - h // 2, w, h)
+
     def show_square(self):
+        self._keep_on_screen()
         self.show()
         self.raise_()
         if not NO_EXCLUDE and not self.excluded:
@@ -597,6 +615,15 @@ class TranslatorWindow(QWidget):
             result = e
         except Exception as e:
             result = EngineError("other", repr(e))
+        # חסימה של נטפרי: רושמים ביומן מה נטפרי ענה (לא את הטקסט שעל המסך), פעם אחת לכל תשובה שונה
+        detail = getattr(self.engine, "block_detail", "")
+        if detail and detail != self.logged_block:
+            self.logged_block = detail
+            try:            # יומן שאי אפשר לכתוב אליו לא יתקע את הריבוע על "מתרגם…" לתמיד
+                with _open_log() as f:
+                    f.write(time.strftime("%Y-%m-%d %H:%M:%S") + " NetFree block: " + detail + "\n")
+            except OSError:
+                pass
         self.signals.done.emit(gen, key, result)
 
     def _on_done(self, gen, key, result):
@@ -818,7 +845,7 @@ class TranslatorWindow(QWidget):
         self._debug(f"frame_{self.debug_n:02d} status={self.status!r} shown={len(self.shown)}")
 
 
-def _log_crash(kind, value, tb):
+def _open_log():
     path = config.HERE / "error.log"
     try:                                                # שלא יגדל בלי גבול: משאירים רק את הסוף
         if path.stat().st_size > config.ERROR_LOG_MAX:
@@ -826,7 +853,11 @@ def _log_crash(kind, value, tb):
             path.write_bytes(tail[tail.find(b"\n") + 1:])
     except OSError:
         pass
-    with open(path, "a", encoding="utf-8") as f:
+    return open(path, "a", encoding="utf-8")
+
+
+def _log_crash(kind, value, tb):
+    with _open_log() as f:
         f.write(time.strftime("%Y-%m-%d %H:%M:%S\n"))
         traceback.print_exception(kind, value, tb, file=f)
 

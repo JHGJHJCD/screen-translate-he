@@ -220,6 +220,41 @@ class BatchCase(unittest.TestCase):
         self.assertEqual(len(e._translate_many([f"t{i}" for i in range(16)])), 16)
         self.assertEqual(len(e.calls), 31)          # המקרה הגרוע: 2n-1 בקשות
 
+    def blocking(self, bad):
+        e = translate_engine.TranslateEngine()
+        e.calls = []
+
+        def fake(text):
+            e.calls.append(text)
+            parts = text.split("\n")
+            if any(bad(p) for p in parts):
+                raise EngineError("blocked", "Blocked by NetFree")
+            return "\n".join("ע" + p for p in parts)
+        e._request = fake
+        return e
+
+    def test_one_blocked_paragraph_is_skipped_and_the_rest_translated(self):
+        e = self.blocking(lambda p: p == "t5")
+        texts = [f"t{i}" for i in range(32)]
+        self.assertEqual(e._translate_texts(texts), ["" if t == "t5" else "ע" + t for t in texts])
+        self.assertLess(len(e.calls), 14)
+        self.assertIn("NetFree", e.block_detail)
+        before = len(e.calls)
+        e._translate_texts(texts)                   # הפסקה החסומה לא נשלחת שוב
+        self.assertEqual(len(e.calls), before)
+
+    def test_everything_blocked_gives_up_and_does_not_split_again(self):
+        e = self.blocking(lambda p: True)
+        texts = [f"t{i}" for i in range(64)]
+        with self.assertRaises(EngineError) as c:
+            e._translate_texts(texts)
+        self.assertEqual(c.exception.kind, "blocked")
+        self.assertLess(len(e.calls), 25)
+        before = len(e.calls)
+        with self.assertRaises(EngineError):
+            e._translate_texts(texts)
+        self.assertLessEqual(len(e.calls) - before, 1)
+
     def test_text_cache_and_duplicates(self):
         e = self.engine(lambda parts: False)
         self.assertEqual(e._translate_texts(["a", "a", "b"]), ["עa", "עa", "עb"])
@@ -230,6 +265,26 @@ class BatchCase(unittest.TestCase):
         e = self.engine(lambda parts: False)
         for i in range(0, 700, 50):
             e._translate_texts([f"t{j}" for j in range(i, i + 50)])
+        self.assertLessEqual(len(e._texts), translate_engine.TEXT_CACHE)
+
+    def test_parallel_requests_do_not_collide(self):
+        # בקשה ישנה שהריבוע ויתר עליה ממשיכה לרוץ ליד החדשה; הזיכרון המשותף לא מתנגש
+        import threading
+        e = self.blocking(lambda p: p.endswith("7"))
+        errors = []
+
+        def run(k):
+            try:
+                for i in range(40):
+                    e._translate_texts([f"t{k}_{i}_{j}" for j in range(12)])
+            except Exception as ex:
+                errors.append(repr(ex))
+        threads = [threading.Thread(target=run, args=(k,)) for k in range(6)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(errors, [])
         self.assertLessEqual(len(e._texts), translate_engine.TEXT_CACHE)
 
 
@@ -385,6 +440,40 @@ class WindowStateCase(unittest.TestCase):
         self.assertTrue(w.busy)
         self.assertEqual(w.shown, [])
         self.assertIn("old", w.cache)
+
+    def test_log_failure_does_not_leave_it_busy(self):
+        # יומן שאי אפשר לכתוב אליו: התשובה עדיין מגיעה, והריבוע לא נתקע על "מתרגם…"
+        w = self.w
+        answers = []
+
+        class Engine:
+            block_detail = "Blocked by NetFree (test)"
+            last_model = "test"
+
+            def translate(self, image):
+                raise EngineError("blocked", "x")
+        old_engine, old_open, old_emit = w.engine, main._open_log, w.signals.done.emit
+        w.engine, w.logged_block = Engine(), ""
+        main._open_log = lambda: (_ for _ in ()).throw(PermissionError("read only"))
+        try:
+            w.signals.done.disconnect()
+            w.signals.done.connect(lambda *a: answers.append(a))
+            w._work(w.gen, "k", QImage(10, 10, QImage.Format.Format_RGB32))
+        finally:
+            w.signals.done.disconnect()
+            w.signals.done.connect(w._on_done)
+            w.engine, main._open_log = old_engine, old_open
+        self.assertEqual(len(answers), 1)
+        self.assertEqual(answers[0][2].kind, "blocked")
+
+    def test_square_off_screen_comes_back(self):
+        # מסך שנותק בזמן שהריבוע היה מוסתר: בהצגה הוא חוזר למקום שרואים
+        w = self.w
+        w.setGeometry(-20000, -20000, 560, 360)
+        w._keep_on_screen()
+        screens = [s.availableGeometry() for s in main.QGuiApplication.screens()]
+        g = w.geometry()
+        self.assertIsNotNone(main.parse_place(f"{g.x()},{g.y()},{g.width()},{g.height()}", screens))
 
     def test_cache_is_capped(self):
         for i in range(config.CACHE_SIZE + 25):
