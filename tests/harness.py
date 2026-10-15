@@ -98,6 +98,10 @@ animation:s 1s linear infinite;margin:20px 0}</style>
 <h1>Type your message here</h1>
 <p>We are checking your connection. This may take a few moments.<span class="cur"></span></p>
 <div class="spin"></div><div class="band">Please do not close this window</div>""",
+    "click": STYLE + """<style>button:hover{background:#0d47a1}</style><title>ST-top</title>
+<h1>Press the button below</h1>
+<button id="b" style="width:300px;height:80px" onclick="document.title='click '+(++n)">Save changes</button>
+<p>Move the mouse over the page to see the colors change.</p><script>var n=0</script>""",
     "empty": "<body style='background:#eceff1'><div style='width:300px;height:200px;margin:80px;"
              "background:#90a4ae'></div><div style='width:120px;height:120px;margin:80px;"
              "border-radius:60px;background:#ef6c00'></div></body>",
@@ -108,7 +112,7 @@ view = QWebEngineView()
 view.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
 view.setGeometry(60, 60, 860, 600)
 view.setWindowTitle("ST-harness")
-view.titleChanged.connect(lambda t: view.setWindowTitle(t) if t.startswith("scroll") else None)
+view.titleChanged.connect(lambda t: view.setWindowTitle(t) if t.startswith(("scroll", "click")) else None)
 schedule = [(a.split(":")[0], int(a.split(":")[1])) for a in sys.argv[1:]] or [("A", 3600)]
 image = photo_with_text()
 

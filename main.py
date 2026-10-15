@@ -204,6 +204,10 @@ class TranslatorWindow(QWidget):
         self.shown = []                # התרגומים שמוצגים כרגע
         self.result = None             # התרגומים של התוכן האחרון שנשלח
         self.busy = False
+        self.quiet = False             # תרגום חוזר אוטומטי בזמן שהתרגום הקודם מוצג: בלי "מתרגם…" ובלי אדום
+        self.mouse_pos = None
+        self.mouse_moved_at = 0.0      # מתי העכבר זז לאחרונה בתוך אזור התרגום
+        self.press = None              # לחיצה על תרגום, שתועבר לחלון שמתחת כשמשחררים
         self.logged_block = ""
         self.failed = False            #הבקשה האחרונה נכשלה (רשת/חסימה) — מנסים שוב אחרי המרווח
         self.gen = 0                  # מספר רץ; תשובה ישנה מ-Google נזרקת
@@ -544,9 +548,14 @@ class TranslatorWindow(QWidget):
     def _on_watch(self):
         if not self.enabled or not self.excluded or self.settle.isActive() or self.sig_sent is None:
             return
+        cursor = QCursor.pos()
+        if cursor != self.mouse_pos:
+            self.mouse_pos = cursor
+            if self._region().contains(cursor):
+                self.mouse_moved_at = time.monotonic()
         image = self._grab()
         sig = signature(image)
-        stable = self.prev_sig is not None and changed_cells(sig, self.prev_sig, self.mask) < SMALL_CHANGE
+        stable =self.prev_sig is not None and changed_cells(sig, self.prev_sig, self.mask) < SMALL_CHANGE
         self.prev_sig = sig
         change = changed_cells(sig, self.sig_sent, self.mask)
         if change < SMALL_CHANGE:
@@ -569,9 +578,13 @@ class TranslatorWindow(QWidget):
             self._set_status("")
             self.update()
         if stable and not self.busy and time.monotonic() - self.last_send >= self.gap \
-                and self._under_minute_cap():
+                and not self._mouse_busy() and self._under_minute_cap():
             self._debug(f"content changed ({change} cells)")
             self._translate(image, auto=True)
+
+    def _mouse_busy(self):
+        """העכבר זז עכשיו בתוך הריבוע: השינוי שמתחת הוא כנראה תגובה לעכבר (ריחוף), לא תוכן חדש."""
+        return time.monotonic() - self.mouse_moved_at < config.MOUSE_REST_S
 
     def _under_minute_cap(self):
         now = time.monotonic()
@@ -600,7 +613,9 @@ class TranslatorWindow(QWidget):
             self._on_done(self.gen, key, self.cache[key])
             return
         self.busy = True
-        self._set_status("מתרגם…")
+        self.quiet = auto and bool(self.shown)      # התרגום הקודם נשאר על המסך עד שהחדש מגיע
+        if not self.quiet:
+            self._set_status("מתרגם…")
         self.last_send = time.monotonic()
         self.sends.append(self.last_send)
         self._debug("send")
@@ -697,7 +712,7 @@ class TranslatorWindow(QWidget):
         p = QPainter(self)
         w, h, bar, b, grip = self.width(), self.height(), config.BAR_HEIGHT, config.BORDER, config.GRIP
         # אדום = עובד/מחכה, ירוק = התרגום מוצג
-        red = QColor(config.GREEN if self.shown and not self.busy else config.RED)
+        red = QColor(config.GREEN if self.shown and (not self.busy or self.quiet) else config.RED)
 
         # אזור אחיזה כמעט שקוף, כדי שיהיה אפשר לתפוס את המסגרת הדקה
         ghost = QColor(255, 255, 255, 1)
@@ -806,12 +821,31 @@ class TranslatorWindow(QWidget):
             self.windowHandle().startSystemResize(self._edges(pos))
         elif pos.y() < config.BAR_HEIGHT:
             self.windowHandle().startSystemMove()
+        elif self._on_block(event.position()):
+            self.press = Qt.MouseButton.LeftButton
+
+    def _on_block(self, pos):
+        b = config.BORDER
+        pos = pos - QPointF(b, config.BAR_HEIGHT + b)
+        return any(renderer.cover_of(block.rect).contains(pos) for block in self.shown)
+
+    def mouseReleaseEvent(self, event):
+        """לחיצה על תרגום: התרגום נעלם והלחיצה עוברת לכפתור/קישור שמתחתיו.
+        שולחים אותה רק אחרי השחרור, כי עד אז Windows מפנה את כל הלחיצות לריבוע."""
+        if self.press is None or event.button() != self.press:
+            return
+        self.press = None
+        self._debug("click passed through")
+        self.shown = []
+        self.calm_ticks = 0
+        self.mouse_moved_at = time.monotonic()
+        self.repaint()
+        QTimer.singleShot(40, lambda: (user32.mouse_event(0x0002, 0, 0, 0, 0),
+                                       user32.mouse_event(0x0004, 0, 0, 0, 0)))
 
     def wheelEvent(self, event):
         """גלילה מעל תרגום: מסתירים אותו ומעבירים את הגלילה לחלון שמתחת."""
-        b = config.BORDER
-        pos = event.position() - QPointF(b, config.BAR_HEIGHT + b)
-        if not any(renderer.cover_of(block.rect).contains(pos) for block in self.shown):
+        if not self._on_block(event.position()):
             return
         delta = event.angleDelta().y()
         self.shown = []

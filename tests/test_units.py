@@ -44,6 +44,9 @@ class FakeGoogle(BaseHTTPRequestHandler):
             return self._send(429, "unusual traffic from your computer network")
         if mode == "418":
             return self._send(418, "Blocked by NetFree")
+        if mode == "418-sorry" and not web:            # Google הפנה ל"sorry" ונטפרי חסם את הדף הזה
+            return self._send(418, '<iframe src="//netfree.link/block/#%7B%22url%22:%22https:%2F%2Fwww.google.com'
+                                   '%2Fsorry%2Findex%3Fcontinue=x%22%7D">')
         if mode == "500":
             return self._send(500, "server error")
         if mode == "html":
@@ -114,6 +117,11 @@ class NetworkCase(unittest.TestCase):
     def test_418_is_blocked(self):
         FakeGoogle.mode = "418"
         self.assertEqual(self.kind(lambda: self.engine._fetch("x", web=False)), "blocked")
+
+    def test_google_sorry_page_blocked_by_netfree_is_rate_not_blocked(self):
+        FakeGoogle.mode = "418-sorry"
+        self.assertEqual(self.kind(lambda: self.engine._fetch("x", web=False)), "rate")
+        self.assertEqual(self.engine._request("Hello world"), "שלום עולם")      # עובר לערוץ של האתר
 
     def test_500_is_other(self):
         FakeGoogle.mode = "500"
@@ -474,6 +482,30 @@ class WindowStateCase(unittest.TestCase):
         screens = [s.availableGeometry() for s in main.QGuiApplication.screens()]
         g = w.geometry()
         self.assertIsNotNone(main.parse_place(f"{g.x()},{g.y()},{g.width()},{g.height()}", screens))
+
+    def test_auto_refresh_keeps_translation_quietly(self):
+        # תרגום חוזר אוטומטי כשתרגום מוצג: לא "מתרגם…", לא אדום, התרגום נשאר עד שהחדש מגיע
+        w = self.w
+        w.shown = [object()]
+        w.status = ""
+        w.cache.clear()
+        w.engine = type("E", (), {"translate": lambda self, i: [], "last_model": "t"})()
+        w._translate(QImage(40, 40, QImage.Format.Format_RGB32), auto=True)
+        self.assertTrue(w.quiet)
+        self.assertNotEqual(w.status, "מתרגם…")
+        w._drop_request()
+        w.shown = []
+        w._translate(QImage(41, 40, QImage.Format.Format_RGB32), auto=True)
+        self.assertFalse(w.quiet)
+        self.assertEqual(w.status, "מתרגם…")
+        w._drop_request()
+
+    def test_moving_mouse_holds_auto_translation(self):
+        w = self.w
+        w.mouse_moved_at = time.monotonic()
+        self.assertTrue(w._mouse_busy())
+        w.mouse_moved_at = time.monotonic() - config.MOUSE_REST_S - 0.1
+        self.assertFalse(w._mouse_busy())
 
     def test_cache_is_capped(self):
         for i in range(config.CACHE_SIZE + 25):

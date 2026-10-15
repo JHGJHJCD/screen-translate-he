@@ -1,6 +1,6 @@
 """בדיקות ממשק שלא כוסו ב-run_tests.py: דפים נוספים, כפתורי הפס, גלגלת, Alt+F4, הפעלה שנייה, עומס לאורך זמן.
 
-שימוש: run_ui.py <תיקיית פלט> <extra|buttons|soak> [שניות]
+שימוש: run_ui.py <תיקיית פלט> <extra|buttons|soak|static|click> [שניות]
 מזיז את העכבר ולוחץ בעצמו — לא לגעת במחשב בזמן הריצה.
 """
 import ctypes
@@ -65,8 +65,11 @@ def keys(*vks):
 
 
 def usage(proc):
+    h = ctypes.windll.kernel32.OpenProcess(0x1000, False, proc.pid)      # גרפיקה (GDI) וחלונות (USER)
+    gdi, user = u.GetGuiResources(h, 0), u.GetGuiResources(h, 1)
+    ctypes.windll.kernel32.CloseHandle(h)
     return {"rss_mb": round(proc.memory_info().rss / 1e6, 1), "threads": proc.num_threads(),
-            "handles": proc.num_handles()}
+            "handles": proc.num_handles(), "gdi": gdi, "user": user}
 
 
 def cpu_percent(proc, seconds):
@@ -77,7 +80,7 @@ def cpu_percent(proc, seconds):
 
 
 pages = {"extra": ["dark:13", "small:13", "mixed:13", "tech:13", "cols:13"],
-         "buttons": ["long:300"], "soak": ["anim:3600"]}[scenario]
+         "buttons": ["long:300"], "soak": ["anim:3600"], "static": ["A:3600"], "click": ["click:300"]}[scenario]
 env = dict(os.environ, ST_DEBUG_DIR=str(out), ST_GEOMETRY="70,40,840,610")
 harness = subprocess.Popen([PY, str(ROOT / "tests" / "harness.py"), *pages])
 time.sleep(9)
@@ -100,7 +103,7 @@ try:
     if scenario == "extra":
         time.sleep(13 * 5 - 6)
 
-    elif scenario == "soak":
+    elif scenario in ("soak", "static"):
         seconds = int(sys.argv[3]) if len(sys.argv) > 3 else 360
         time.sleep(5)
         results["start"] = usage(proc)
@@ -110,6 +113,30 @@ try:
         results["end"] = usage(proc)
         results["sends"] = sum(" send" in line for line in events())
         results["seconds"] = seconds
+
+    elif scenario == "click":
+        # לחיצה על כפתור שהתרגום מכסה: אמורה להגיע לכפתור. ותזוזת עכבר מעל הדף לא מתרגמת שוב ושוב.
+        page = u.FindWindowW(None, "ST-harness")
+        time.sleep(3)
+        bx, by = 234 * scale, 185 * scale                 # מרכז הכפתור (הדף ב-60,60; הכפתור ב-24,85 בגודל 300x80)
+        n = len(events())
+        for i in range(40):                               # 4 שניות של תזוזה מעל הדף, כולל מעל הכפתור
+            u.SetCursorPos(int(bx - 150 * scale + i * 8 * scale), int(by + (i % 5) * 6 * scale))
+            time.sleep(0.1)
+        time.sleep(0.5)
+        results["sends_while_mouse_moves"] = sum(" send" in l for l in events()[n:])
+        u.SetCursorPos(int(bx), int(by)); time.sleep(3)
+        results["translation_shown_before_click"] = any("shown=" in l and "shown=0" not in l for l in events())
+        n = len(events())
+        click(bx, by)
+        time.sleep(1)
+        title = ctypes.create_unicode_buffer(100)
+        u.GetWindowTextW(page, title, 100)
+        results["click_reached_button"] = title.value == "click 1"
+        results["page_title"] = title.value
+        results["click_passed_log"] = any("click passed through" in l for l in events()[n:])
+        u.SetCursorPos(int(bx + 500 * scale), int(by + 300 * scale))
+        results["translation_back_after_click"] = wait_for("result ", 12, n) or wait_for("cache", 1, n)
 
     elif scenario == "buttons":
         left, top, right, bottom = rect(hwnd)

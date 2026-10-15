@@ -206,6 +206,9 @@ class TranslateEngine:
             return "".join(part[0] for part in data[0] if part[0])
         except urllib.error.HTTPError as e:
             detail = e.read(600).decode("utf-8", "replace")
+            if "google.com%2fsorry" in detail.lower() or "google.com/sorry" in detail.lower():
+                # Google הגביל את הקצב והפנה לדף "sorry", ונטפרי חסם את הדף הזה: זו הגבלת קצב, לא טקסט חסום
+                raise EngineError("rate", f"{e.code} google sorry")
             if e.code == 418 or "netfree" in detail.lower():
                 raise EngineError("blocked", detail)
             raise EngineError("rate" if e.code == 429 else "other", f"{e.code} {detail}")
